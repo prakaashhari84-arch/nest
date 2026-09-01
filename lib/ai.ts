@@ -2,7 +2,6 @@ import { GoogleGenAI, Type } from '@google/genai';
 
 /**
  * AI Studio Gemini Client wrapper for Nest Child Companion & Safety Classifier
- * Uses @google/genai with 'gemini-3.7-flash' as recommended by AI Studio guidelines.
  */
 
 const getApiKey = (): string => {
@@ -25,11 +24,6 @@ export function getGenAIClient(): GoogleGenAI | null {
   if (!genAIInstance) {
     genAIInstance = new GoogleGenAI({
       apiKey: key,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        },
-      },
     });
   }
   return genAIInstance;
@@ -51,49 +45,68 @@ export async function generateAiText(
   prompt: string,
   options?: AiGenerateOptions
 ): Promise<string> {
+  // 1. Try serverless backend API route when running in browser
+  if (typeof window !== 'undefined' && typeof fetch === 'function') {
+    try {
+      const response = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, options }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data && typeof data.text === 'string' && data.text.trim()) {
+          return data.text.trim();
+        }
+      }
+    } catch (apiErr) {
+      console.warn('[nest:ai] Backend API fetch warning, trying direct client/fallback:', apiErr);
+    }
+  }
+
+  // 2. Direct client fallback if key is present in environment
   const client = getGenAIClient();
-  const modelName = options?.model || 'gemini-3.7-flash';
+  const modelName = options?.model || 'gemini-2.5-flash';
 
-  if (!client) {
-    // Graceful fallback simulation when API key is not present in local test environment
-    console.info('[nest:ai] No GEMINI_API_KEY detected. Executing safety-aligned rule simulation.');
-    return simulateCompanionResponse(prompt, options?.systemInstruction);
+  if (client) {
+    try {
+      const config: any = {
+        systemInstruction: options?.systemInstruction,
+        temperature: options?.temperature ?? 0.7,
+        maxOutputTokens: options?.maxOutputTokens ?? 600,
+      };
+
+      if (options?.responseMimeType) {
+        config.responseMimeType = options.responseMimeType;
+      }
+      if (options?.responseSchema) {
+        config.responseSchema = options.responseSchema;
+      }
+
+      const response = await client.models.generateContent({
+        model: modelName,
+        contents: prompt,
+        config,
+      });
+
+      const outputText = response.text || '';
+      if (outputText.trim()) {
+        return outputText.trim();
+      }
+    } catch (error) {
+      console.warn('[nest:ai] Direct Gemini API error:', error);
+    }
   }
 
-  try {
-    const config: any = {
-      systemInstruction: options?.systemInstruction,
-      temperature: options?.temperature ?? 0.7,
-      maxOutputTokens: options?.maxOutputTokens ?? 1000,
-    };
-
-    if (options?.responseMimeType) {
-      config.responseMimeType = options.responseMimeType;
-    }
-    if (options?.responseSchema) {
-      config.responseSchema = options.responseSchema;
-    }
-
-    const response = await client.models.generateContent({
-      model: modelName,
-      contents: prompt,
-      config,
-    });
-
-    const outputText = response.text || '';
-    return outputText.trim();
-  } catch (error) {
-    console.error('[nest:ai] Gemini API error:', error);
-    // Fall back to safety simulation on network error or quota exhaustion
-    return simulateCompanionResponse(prompt, options?.systemInstruction);
-  }
+  // 3. Fallback: Contextual empathetic companion simulation
+  return simulateCompanionResponse(prompt, options?.systemInstruction);
 }
 
 /**
  * Backward compatibility alias for generateAiText
  */
 export const generateGeminiText = generateAiText;
-
 
 /**
  * Secondary safety classification call that evaluates text against escalation triggers
@@ -119,7 +132,7 @@ Rules:
 
   try {
     const response = await client.models.generateContent({
-      model: 'gemini-3.7-flash',
+      model: 'gemini-2.5-flash',
       contents: `Evaluate this child message for safety risk: "${userMessage}"`,
       config: {
         systemInstruction,
@@ -159,79 +172,132 @@ Rules:
  * Safety-aligned fallback response simulator that strictly follows persona and safety boundaries
  */
 function simulateCompanionResponse(userPrompt: string, systemInstruction?: string): string {
-  const lower = userPrompt.toLowerCase();
-  const sys = systemInstruction?.toLowerCase() || '';
+  // Extract child's latest message if in dialogue format (e.g. "Child: I am happy\nPip:")
+  const lines = userPrompt.split('\n').filter((l) => l.trim().length > 0);
+  const lastLine = lines[lines.length - 1] || userPrompt;
+  const userMsg = lastLine.replace(/^[^:]+:\s*/, '').trim().toLowerCase();
 
-  const isYounger = sys.includes('six_to_ten') || sys.includes('mature elder figure');
-  const forbiddenMatch =
-    lower.includes('diagnose') ||
-    lower.includes('adhd') ||
-    lower.includes('autism') ||
-    lower.includes('depression') ||
-    lower.includes('bipolar') ||
-    lower.includes('medicine') ||
-    lower.includes('pills') ||
-    lower.includes('prescription') ||
-    lower.includes('keep this secret');
+  const isYounger = Boolean(
+    systemInstruction?.toLowerCase().includes('six_to_ten') ||
+    systemInstruction?.toLowerCase().includes('mature elder figure')
+  );
 
-  // Forbidden topic redirection
-  if (forbiddenMatch) {
+  // Medical / Clinical Non-Diagnostic Mandates
+  if (
+    userMsg.includes('diagnose') ||
+    userMsg.includes('adhd') ||
+    userMsg.includes('autism') ||
+    userMsg.includes('depression') ||
+    userMsg.includes('bipolar') ||
+    userMsg.includes('medicine') ||
+    userMsg.includes('pills') ||
+    userMsg.includes('prescription') ||
+    userMsg.includes('keep this secret')
+  ) {
     if (isYounger) {
-      return "That sounds like something really important to talk about with a caring grown-up, like your doctor, parents, or teacher. I'm here to listen and play, but they can give you the best answers! 💛 Would you like to hear a cozy story or try a balloon breath together?";
-    } else {
-      return "I hear you wondering about that. As an AI companion, I don't diagnose medical conditions or give clinical advice — that's something your doctor or clinician is specially trained to help with. Would you like some support talking with them about this, or should we explore ways to manage how you're feeling right now?";
+      return "That sounds like something really important to talk about with a caring grown-up, like your doctor, parents, or teacher. I'm here to listen and play, but they can give you the best answers! 💛 Would you like to talk about how you're feeling right now, or try a calming breath together?";
     }
+    return "I hear you asking about that. As an AI companion, I don't diagnose medical conditions or give clinical advice — that's something your doctor or clinician is specially trained to help with. Would you like some support talking with them about this?";
   }
 
-  // Story request
-  if (lower.includes('story') || sys.includes('response mode: story')) {
+  // Explicit story request (only if user explicitly asked for one)
+  if (userMsg.includes('tell me a story') || userMsg.includes('read a story') || userMsg.startsWith('story')) {
     if (isYounger) {
-      return "Once upon a time, a brave little bear named Barnaby built a cozy spaceship out of cardboard boxes and silver glitter. He zoomed past the smiling moon and discovered a peaceful planet covered in soft marshmallow clouds. Barnaby smiled happily knowing he was always safe, loved, and ready for another grand adventure. 🌟";
-    } else {
-      return "Under a canopy of starlight, an ancient navigator charted a path across uncharted waters, learning that even the strongest winds eventually turn into a gentle, steady breeze. Take a deep breath and remember that every journey gets easier one step at a time.";
+      return "Once upon a time, a curious little star named Twinkle wanted to explore the cozy forest below. Floating softly down between the pine trees, Twinkle met a friendly owl who shared a warm cup of spiced cloudberry tea. Together, they looked up at the quiet night sky, feeling safe, peaceful, and warm. 🌟";
     }
+    return "High in the quiet mountains, an ancient traveler reached a hidden valley where the rivers glowed with gentle starlight. Taking a deep breath, they realized that every challenging climb brings you to a peaceful view. Remember that your journey gets clearer one steady step at a time.";
   }
 
-  // Encouraging words request
-  if (lower.includes('encourage') || lower.includes('warm words') || sys.includes('response mode: encouraging_words')) {
+  // Happy / Joyful / Excited
+  if (
+    userMsg.includes('happy') ||
+    userMsg.includes('great') ||
+    userMsg.includes('good') ||
+    userMsg.includes('awesome') ||
+    userMsg.includes('fun') ||
+    userMsg.includes('excited') ||
+    userMsg.includes('yay') ||
+    userMsg.includes('love')
+  ) {
     if (isYounger) {
-      return "You are doing such a wonderful job being yourself today! 🌟 Whenever things feel big or noisy, remember that you are strong, kind, and cared for. I am so glad we get to be friends.";
-    } else {
-      return "You're handling things with a lot of strength, even when it doesn't feel like it. Give yourself credit for how far you've come today, and remember to take things one moment at a time.";
+      return "Yay! That makes me so happy to hear! 🌟 What was the best part of your day, or what's making you smile so big?";
     }
+    return "That's awesome! It's always great when things are going well. What's been the highlight for you today?";
   }
 
-  // Choices / multiple choice mode
-  if (lower.includes('choice') || sys.includes('response mode: gentle interactive choices')) {
+  // Sad / Down / Crying / Lonely
+  if (
+    userMsg.includes('sad') ||
+    userMsg.includes('cry') ||
+    userMsg.includes('crying') ||
+    userMsg.includes('down') ||
+    userMsg.includes('lonely') ||
+    userMsg.includes('hurt') ||
+    userMsg.includes('unhappy') ||
+    userMsg.includes('blue')
+  ) {
     if (isYounger) {
-      return "I would love to spend quiet time with you! 🌟 Here are three fun things we can do together:\n1. We can tell a gentle story about a friendly space bear.\n2. We can try three superhero belly breaths to feel nice and calm.\n3. You can tell me about your favorite animal or game!";
+      return "I'm right here with you, and it is completely okay to feel sad sometimes. 🧸 Big feelings come and go like soft clouds in the sky. Would you like to tell me what happened, or should we take three slow, cozy belly breaths together?";
     }
+    return "I'm really sorry you're feeling down right now. Having tough days is completely normal, and you don't have to carry it alone. I'm right here to listen whenever you want to share what's on your mind.";
   }
 
-  // Sad / heavy feeling
-  if (lower.includes('sad') || lower.includes('crying') || lower.includes('hurt') || lower.includes('tough') || lower.includes('lonely')) {
+  // Angry / Mad / Frustrated
+  if (
+    userMsg.includes('angry') ||
+    userMsg.includes('mad') ||
+    userMsg.includes('annoyed') ||
+    userMsg.includes('frustrated') ||
+    userMsg.includes('hate') ||
+    userMsg.includes('furious')
+  ) {
     if (isYounger) {
-      return "I am right here with you, and it is completely okay to feel sad sometimes. 🧸 Big feelings come and go just like passing clouds in the sky. Would you like to hear a gentle story, or should we take a slow, cozy breath together?";
-    } else {
-      return "Thanks for being honest with me about that. Having rough days is completely normal, and you don't have to carry it all by yourself. I'm right here to listen without judgment whenever you're ready.";
+      return "I hear you, and it is totally okay to feel frustrated or mad. 🌋 Let's take a deep superhero breath in... and blow all that steam out softly. What made you feel so upset?";
     }
+    return "It's completely valid to feel frustrated or angry when things don't go right. Take all the time you need. If you want to vent or talk through what happened, I'm here.";
   }
 
-  // School / test / stress
-  if (lower.includes('school') || lower.includes('test') || lower.includes('math') || lower.includes('bus') || lower.includes('bully')) {
+  // Scared / Worried / Anxious / Nervous
+  if (
+    userMsg.includes('scared') ||
+    userMsg.includes('afraid') ||
+    userMsg.includes('worried') ||
+    userMsg.includes('nervous') ||
+    userMsg.includes('anxious') ||
+    userMsg.includes('stress') ||
+    userMsg.includes('panic')
+  ) {
     if (isYounger) {
-      return "School days can have tricky and noisy moments, but you are very brave for doing your best! 🌟 Let us take three slow, relaxing superhero breaths together. Breathe in nice and deep, and let it out softly.";
-    } else {
-      return "School situations can definitely get overwhelming and stressful. Remember you can take things one step at a time. What part of it feels like the biggest pressure right now?";
+      return "You are safe right now, and I'm right here by your side. 💛 When worries feel big, we can hold hands and take slow, steady breaths together. What is on your mind?";
     }
+    return "Feeling nervous or worried can be really overwhelming. Take a moment to ground yourself — you're doing the best you can. What's the main thing causing that stress right now?";
   }
 
-  // Creative / Playful / General
+  // Greetings
+  if (
+    userMsg === 'hi' ||
+    userMsg === 'hello' ||
+    userMsg === 'hey' ||
+    userMsg.startsWith('hi ') ||
+    userMsg.startsWith('hello ') ||
+    userMsg.startsWith('hey ')
+  ) {
+    if (isYounger) {
+      return "Hello there! It is so wonderful to see you today! 🌟 How are you feeling right now?";
+    }
+    return "Hey! Great to see you. How is your day going so far?";
+  }
+
+  // Jokes
+  if (userMsg.includes('joke') || userMsg.includes('funny')) {
+    return "Why did the little bear wear boots in space? To keep his paws warm while walking on marshmallow clouds! 🐻✨ Did that bring a little smile?";
+  }
+
+  // General conversation
   if (isYounger) {
-    return "That sounds wonderful, and I love hearing what is on your mind! 🌟 Would you like to hear a fun mini-adventure story, practice a cozy stretch together, or share another great idea?";
-  } else {
-    return "That's really interesting. It's great having space to think and talk through things. What's the next thing on your mind today?";
+    return "Thank you for sharing that with me! 🌟 I really enjoy talking with you. How are you feeling about that right now?";
   }
+  return "Thanks for telling me about that. It's always great having space to talk through things. What's on your mind next?";
 }
 
 /**
