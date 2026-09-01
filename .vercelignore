@@ -7,9 +7,14 @@ build/
 *.gradle
 *.gradle.kts
 gradle.properties
+settings.gradle.kts
+build.gradle.kts
+app/build.gradle.kts
+app/src/
 android/
 *.apk
 *.aab
+*.kt
 
 # Local Cache & Tooling
 .agents/
