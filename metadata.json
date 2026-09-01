@@ -1,6 +1,6 @@
 {
-  "name": "nest",
-  "description": "Scaffolding for Nest: Next.js App Router with Prisma, NextAuth, role-based routing (Child, Parent, Clinician), Gemini AI, and Zod validation.",
+  "name": "Nest",
+  "description": "Pediatric behavioral wellness companion & care team ecosystem with interactive child journeys, mood tracking, gamification, and clinician dashboards.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
