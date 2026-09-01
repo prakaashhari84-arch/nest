@@ -1,0 +1,6 @@
+{
+  "name": "nest",
+  "description": "Scaffolding for Nest: Next.js App Router with Prisma, NextAuth, role-based routing (Child, Parent, Clinician), Gemini AI, and Zod validation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,513 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CHILD
+  PARENT
+  CLINICIAN
+}
+
+enum AgeGroup {
+  SIX_TO_TEN
+  TEN_TO_FOURTEEN
+}
+
+enum CompanionVibe {
+  CHILL
+  HYPE
+  COZY
+  COOL
+}
+
+enum MoodType {
+  HAPPY
+  MILD
+  SAD
+}
+
+enum PlaceType {
+  HOME
+  SCHOOL
+  PARK
+  RELATIVES
+  TUITION
+  TRANSIT
+  WORSHIP
+  NEIGHBORHOOD
+}
+
+enum RatingLevel {
+  GOOD
+  OKAY
+  NOT_GREAT
+}
+
+model User {
+  id               String            @id @default(cuid())
+  name             String?
+  email            String            @unique
+  password         String
+  role             Role              @default(CHILD)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  // 1-to-1 relation to role-specific profile placeholders
+  childProfile     ChildProfile?
+  parentProfile    ParentProfile?
+  clinicianProfile ClinicianProfile?
+
+  @@index([email])
+  @@index([role])
+}
+
+model ChildProfile {
+  id                  String               @id @default(cuid())
+  userId              String               @unique
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dateOfBirth         DateTime?
+  avatarUrl           String?
+  nickname            String?
+  age                 Int?
+  grade               String?
+  nationality         String?
+  preferredLanguage   String?              @default("English")
+  hasTraumaHistory    Boolean              @default(false)
+  traumaHistoryNote   String?
+  hasOfflineClinicianOfRecord Boolean  @default(false) // If true, skips platform monthly 1-on-1 scheduling
+  ageGroup            AgeGroup?
+  onboarding_complete Boolean              @default(false)
+  companionName       String?
+  companionVibe       CompanionVibe?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  // Relations to linked relationships
+  linkedParents       LinkedRelationship[] @relation("ChildToRelationships")
+
+  // Mood and check-in relations
+  moodEntries         MoodEntry[]
+  placeRatings        PlaceRating[]
+  ruleSets            RuleSet[]
+  conversationTurns   ConversationTurn[]
+
+  // Pattern Safety Alerts and Trusted Persons
+  patternAlerts       PatternAlert[]
+  trustedPersons      TrustedPerson[]
+  trustedPersonName   String?
+  trustedPersonContact String?
+  trustedPersonRel    String?
+
+  // Care Team Chat & Scheduling
+  careTeamMessages    Message[]
+  availabilitySlots   AvailabilitySlot[]
+  therapyActivities   TherapyActivity[]
+
+  @@index([userId])
+}
+
+model ParentProfile {
+  id                 String               @id @default(cuid())
+  userId             String               @unique
+  user               User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  phoneNumber        String?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  // Relations to linked relationships
+  linkedChildren     LinkedRelationship[] @relation("ParentToRelationships")
+
+  @@index([userId])
+}
+
+model ClinicianProfile {
+  id                 String               @id @default(cuid())
+  userId             String               @unique
+  user               User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  licenseNumber      String?
+  specialization     String?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  // Relations to linked relationships
+  assignedChildren   LinkedRelationship[] @relation("ClinicianToRelationships")
+  ruleSets           RuleSet[]
+
+  @@index([userId])
+}
+
+// Join table connecting a child to their parent(s) and clinician
+model LinkedRelationship {
+  id                 String            @id @default(cuid())
+  
+  childId            String
+  child              ChildProfile      @relation("ChildToRelationships", fields: [childId], references: [id], onDelete: Cascade)
+
+  parentId           String?
+  parent             ParentProfile?    @relation("ParentToRelationships", fields: [parentId], references: [id], onDelete: SetNull)
+
+  clinicianId        String?
+  clinician          ClinicianProfile? @relation("ClinicianToRelationships", fields: [clinicianId], references: [id], onDelete: SetNull)
+
+  status             String            @default("ACTIVE") // ACTIVE, PENDING, ARCHIVED
+  notes              String?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  @@index([childId])
+  @@index([parentId])
+  @@index([clinicianId])
+}
+
+// Daily Mood check-in entries
+model MoodEntry {
+  id           String       @id @default(cuid())
+  childId      String
+  child        ChildProfile @relation(fields: [childId], references: [id], onDelete: Cascade)
+  mood         MoodType     // HAPPY, MILD, SAD
+  note         String?      // Optional text note or prompt starter text
+  priorityFlag Boolean      @default(false) // Flagged true for SAD or sensitive signals
+  promptStarter String?     // e.g., "Something happened at school", "I had an argument"
+  createdAt    DateTime     @default(now())
+
+  @@index([childId])
+  @@index([createdAt])
+}
+
+// Place ratings ("Your Places")
+model PlaceRating {
+  id           String       @id @default(cuid())
+  childId      String
+  child        ChildProfile @relation(fields: [childId], references: [id], onDelete: Cascade)
+  place        PlaceType    // HOME, SCHOOL, PARK, RELATIVES, TUITION, TRANSIT, WORSHIP, NEIGHBORHOOD
+  rating       RatingLevel  // GOOD, OKAY, NOT_GREAT
+  note         String?      // Optional follow up or context note
+  wantsToTalk  Boolean?     // true if "Talk about it", false if "Just know for now"
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@unique([childId, place])
+  @@index([childId])
+  @@index([rating])
+}
+
+// Clinician Rule Engine & Safety Configuration
+model RuleSet {
+  id           String            @id @default(cuid())
+  clinicianId  String?           // Nullable: null = Global Default
+  clinician    ClinicianProfile? @relation(fields: [clinicianId], references: [id], onDelete: Cascade)
+  childId      String?           // Nullable: null = Applies to all clinician's caseload or global
+  child        ChildProfile?     @relation(fields: [childId], references: [id], onDelete: Cascade)
+  name         String
+  content      Json              // Structured JSON field: allowedTopics, forbiddenTopics, escalationTriggers, toneGuidelines, ageGroupOverrides
+  version      Int               @default(1)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@index([clinicianId])
+  @@index([childId])
+}
+
+enum TurnRole {
+  CHILD
+  COMPANION
+  SYSTEM
+}
+
+enum TurnSeverity {
+  NONE
+  MILD
+  SERIOUS
+}
+
+// ConversationTurn: Stores every AI companion dialogue turn with safety scoring & audit trail
+model ConversationTurn {
+  id           String       @id @default(cuid())
+  childId      String
+  child        ChildProfile @relation(fields: [childId], references: [id], onDelete: Cascade)
+  role         TurnRole     // CHILD, COMPANION, SYSTEM
+  content      String
+  severity     TurnSeverity @default(NONE) // NONE, MILD, SERIOUS
+  reason       String?      // Clinician audit rationale / trigger explanation
+  metadata     Json?        // Optional metadata (responseMode, tone, language)
+  createdAt    DateTime     @default(now())
+
+  @@index([childId])
+  @@index([severity])
+  @@index([createdAt])
+}
+
+// -------------------------------------------------------------------
+// GAMIFICATION LAYER MODELS (Cosmetic & Engagement Only)
+// -------------------------------------------------------------------
+
+model StreakRecord {
+  id             String       @id @default(cuid())
+  childId        String       @unique
+  currentStreak  Int          @default(0)
+  longestStreak  Int          @default(0)
+  lastActiveDate DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([childId])
+}
+
+model PointsLedger {
+  id        String   @id @default(cuid())
+  childId   String
+  amount    Int      // Positive (earned) or negative (spent on cosmetics)
+  reason    String   // e.g. "word_scramble_correct", "story_chapter_complete", "mood_checkin", "cosmetic_purchase"
+  createdAt DateTime @default(now())
+
+  @@index([childId])
+  @@index([createdAt])
+}
+
+model Badge {
+  id          String       @id @default(cuid())
+  key         String       @unique // e.g. "first_story", "seven_day_streak", "quiz_pro", "thirty_day_streak", "bookworm"
+  name        String
+  description String
+  iconKey     String
+  category    String       @default("achievement")
+  createdAt   DateTime     @default(now())
+
+  childBadges ChildBadge[]
+}
+
+model ChildBadge {
+  id        String   @id @default(cuid())
+  childId   String
+  badgeId   String
+  badge     Badge    @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+  earnedAt  DateTime @default(now())
+
+  @@unique([childId, badgeId])
+  @@index([childId])
+}
+
+model CosmeticItem {
+  id               String                  @id @default(cuid())
+  name             String
+  costPoints       Int
+  category         String                  @default("companion_theme") // e.g. "companion_theme", "accessory", "aura"
+  previewImageKey  String?
+  iconEmoji        String                  @default("✨")
+  themeValue       String                  @default("default")
+  createdAt        DateTime                @default(now())
+
+  purchases        ChildCosmeticPurchase[]
+}
+
+model ChildCosmeticPurchase {
+  id             String       @id @default(cuid())
+  childId        String
+  cosmeticItemId String
+  cosmeticItem   CosmeticItem @relation(fields: [cosmeticItemId], references: [id], onDelete: Cascade)
+  purchasedAt    DateTime     @default(now())
+
+  @@unique([childId, cosmeticItemId])
+  @@index([childId])
+}
+
+// -------------------------------------------------------------------
+// SAFETY & PATTERN-TRACKING ESCALATION MODELS (Safety Critical)
+// -------------------------------------------------------------------
+
+enum AlertSeverity {
+  MILD
+  SERIOUS
+}
+
+enum AlertStatus {
+  OPEN
+  PARENT_NOTIFIED
+  CLINICIAN_NOTIFIED
+  HELPLINE_ROUTED
+  RESOLVED
+}
+
+model PatternAlert {
+  id                      String           @id @default(cuid())
+  childId                 String
+  child                   ChildProfile     @relation(fields: [childId], references: [id], onDelete: Cascade)
+  severity                AlertSeverity    // MILD, SERIOUS
+  category                String           // e.g. "sustained_sadness", "abuse_disclosure", "self_harm_mention", "withdrawal", "home_safety_concern"
+  summary                 String           // Human-readable, generated by LLM, NEVER phrased as a diagnosis
+  sourceTurnIds           String[]         // References to ConversationTurn rows
+  status                  AlertStatus      @default(OPEN) // OPEN, PARENT_NOTIFIED, CLINICIAN_NOTIFIED, HELPLINE_ROUTED, RESOLVED
+  reviewedByHuman         Boolean          @default(false)
+  reviewedAt              DateTime?
+  reviewedByUserId        String?
+  reviewNotes             String?
+  suspectedAbuserIsParent Boolean          @default(false) // Explicit LLM classification step only
+  suggestedStarters       String[]         // 2-3 gentle conversation starters generated per MILD alert
+  
+  helplineContactId       String?
+  helplineContact         HelplineContact? @relation(fields: [helplineContactId], references: [id], onDelete: SetNull)
+  
+  trustedPersonId         String?
+  trustedPerson           TrustedPerson?   @relation(fields: [trustedPersonId], references: [id], onDelete: SetNull)
+  
+  createdAt               DateTime         @default(now())
+  updatedAt               DateTime         @updatedAt
+
+  @@index([childId])
+  @@index([severity])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model HelplineContact {
+  id          String         @id @default(cuid())
+  countryCode String         @default("US") // US, UK, IN, CA, GLOBAL
+  name        String         // e.g. "Childhelp National Child Abuse Hotline", "Crisis Text Line", "988 Suicide & Crisis Lifeline"
+  phoneNumber String
+  textNumber  String?
+  website     String?
+  description String?
+  isDefault   Boolean        @default(false)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  patternAlerts PatternAlert[]
+
+  @@index([countryCode])
+}
+
+model TrustedPerson {
+  id           String         @id @default(cuid())
+  childId      String
+  child        ChildProfile   @relation(fields: [childId], references: [id], onDelete: Cascade)
+  name         String         // e.g. "Aunt Sarah", "Grandma Elena", "Counselor Davis"
+  relationship String         // e.g. "Aunt", "Grandmother", "School Counselor", "Family Friend"
+  contactPhone String?
+  contactEmail String?
+  isPrimary    Boolean        @default(true)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  patternAlerts PatternAlert[]
+
+  @@index([childId])
+}
+
+// -------------------------------------------------------------------
+// CARE TEAM MESSAGING & 1-ON-1 CLINICAL SCHEDULING (Prompt 11)
+// -------------------------------------------------------------------
+
+model Message {
+  id                   String            @id @default(cuid())
+  senderId             String            // User ID of sender (Clinician or Parent)
+  senderRole           Role              @default(CLINICIAN)
+  recipientId          String            // User ID of recipient
+  childId              String            // Context child
+  child                ChildProfile      @relation(fields: [childId], references: [id], onDelete: Cascade)
+  content              String
+  attachedSubmissionId String?           // Optional link to TherapySubmission for inline video playback (Prompt 13)
+  createdAt            DateTime          @default(now())
+
+  @@index([childId])
+  @@index([senderId])
+  @@index([recipientId])
+  @@index([createdAt])
+}
+
+model AvailabilitySlot {
+  id               String            @id @default(cuid())
+  clinicianId      String
+  startTime        DateTime
+  endTime          DateTime
+  isBooked         Boolean           @default(false)
+  bookedByParentId String?
+  bookedForChildId String?
+  child            ChildProfile?     @relation(fields: [bookedForChildId], references: [id], onDelete: SetNull)
+  bookedAt         DateTime?
+  notes            String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@index([clinicianId])
+  @@index([bookedForChildId])
+  @@index([startTime])
+}
+
+// -------------------------------------------------------------------
+// HOME THERAPY LOOP (Prompt 12: Clinician Assigns, Parent Receives)
+// -------------------------------------------------------------------
+
+enum ActivityStatus {
+  ASSIGNED
+  SUBMITTED
+  REVIEWED
+}
+
+model TherapyActivity {
+  id           String              @id @default(cuid())
+  clinicianId  String
+  childId      String
+  child        ChildProfile        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  title        String              // e.g. "Produce /s/ and /z/ sounds in conversation"
+  instructions String              // Rich text / detailed step-by-step guidance for home practice
+  targetSkill  String              // e.g. "Articulation & Speech", "Social Turn-Taking", "Emotional Recognition"
+  assignedAt   DateTime            @default(now())
+  dueBy        DateTime?
+  status       ActivityStatus      @default(ASSIGNED) // ASSIGNED, SUBMITTED, REVIEWED
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  submissions  TherapySubmission[]
+
+  @@index([childId])
+  @@index([clinicianId])
+  @@index([status])
+}
+
+// -------------------------------------------------------------------
+// VIDEO UPLOAD & SUBMISSION STORAGE (Prompt 13)
+// -------------------------------------------------------------------
+
+enum SubmissionStatus {
+  UPLOADED
+  ANALYZING
+  ANALYZED
+  REVIEWED
+}
+
+model TherapySubmission {
+  id                String            @id @default(cuid())
+  therapyActivityId String
+  therapyActivity   TherapyActivity   @relation(fields: [therapyActivityId], references: [id], onDelete: Cascade)
+  videoUrl          String            // URL/Key in storage provider
+  videoFileName     String?
+  videoSizeBytes    Int?
+  uploadedAt        DateTime          @default(now())
+  status            SubmissionStatus  @default(UPLOADED)
+  
+  // Prompt 14 Insight Report & Clinician Loop Closure
+  insightReport     String?           // JSON: overallSummary, adherenceNotes, engagementNotes, timestampedNotes
+  clinicianFeedback String?           // Free-text clinician feedback for parent
+  feedbackTags      String[]          // e.g. ["Great engagement", "Try slowing down", "Revisit step 2"]
+  feedbackSentAt    DateTime?
+  
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  @@index([therapyActivityId])
+  @@index([status])
+  @@index([uploadedAt])
+}
+
+
+
+
+
