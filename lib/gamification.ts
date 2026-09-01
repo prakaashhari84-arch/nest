@@ -320,6 +320,15 @@ export function awardChildPoints(
   recordChildActivity(childId);
   const newBadges = checkAndAwardBadges(childId, reasonKey);
 
+  // Background sync with live Vercel backend serverless function
+  if (typeof window !== 'undefined' && typeof fetch === 'function') {
+    fetch('/api/gamification', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ childId, action: 'AWARD_POINTS', reasonKey }),
+    }).catch(() => {});
+  }
+
   const newBalance = updatedLedger.reduce((sum, entry) => sum + entry.amount, 0);
   return {
     newBalance,
@@ -608,15 +617,23 @@ export function purchaseCosmeticItem(
       // Auto-equip purchased cosmetic theme
       localStorage.setItem(`${STORAGE_KEYS.EQUIPPED_THEME}${childId}`, item.themeValue);
     } catch (err) {
-      console.warn('Could not save cosmetic purchase:', err);
+      console.warn('Could not persist cosmetic purchase:', err);
+    }
+
+    if (typeof fetch === 'function') {
+      fetch('/api/gamification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ childId, action: 'PURCHASE_COSMETIC', cosmeticItemId: itemId }),
+      }).catch(() => {});
     }
   }
 
-  const newBalance = updatedLedger.reduce((sum, e) => sum + e.amount, 0);
+  const finalBalance = updatedLedger.reduce((sum, entry) => sum + entry.amount, 0);
   return {
     success: true,
-    message: `Unlocked ${item.name}! Your companion is looking awesome.`,
-    newBalance,
+    message: `Unlocked ${item.name}! ✨`,
+    newBalance: finalBalance,
   };
 }
 

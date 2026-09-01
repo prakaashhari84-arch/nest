@@ -123,9 +123,9 @@ export default function ChildOnboardingWizard({
   };
 
   return (
-    <div id="child-onboarding-container" className="w-full max-w-xl mx-auto py-4 px-4 sm:px-6">
+    <div id="child-onboarding-container" className="w-full max-w-xl mx-auto py-2 sm:py-6 px-2 sm:px-4 flex-1 flex flex-col justify-center">
       {/* Friendly Soft Outer Container */}
-      <div className="bg-white rounded-3xl border-2 border-amber-200/80 shadow-md p-6 sm:p-8 space-y-6">
+      <div className="bg-white rounded-3xl border border-amber-200/80 shadow-md p-5 sm:p-8 space-y-6 w-full">
         {/* Top Progress Dots & Step Pill */}
         <div className="flex items-center justify-between gap-4 border-b border-stone-100 pb-4">
           <div className="flex items-center gap-1.5">

@@ -1,10 +1,4 @@
-import type { Metadata } from 'next';
 import React from 'react';
-
-export const metadata: Metadata = {
-  title: 'nest',
-  description: 'Scaffolding for Nest: Next.js App Router with Prisma, NextAuth, role-based routing (Child, Parent, Clinician), Gemini AI, and Zod validation.',
-};
 
 export default function RootLayout({
   children,

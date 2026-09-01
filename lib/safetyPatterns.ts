@@ -638,5 +638,19 @@ export function markAlertReviewed(
 
   alerts[index] = updated;
   saveAlerts(alerts);
+
+  if (typeof window !== 'undefined' && typeof fetch === 'function') {
+    fetch('/api/safety/alerts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'MARK_REVIEWED',
+        alertId,
+        reviewerUserId,
+        reviewNotes: reviewNotes?.trim(),
+      }),
+    }).catch(() => {});
+  }
+
   return updated;
 }

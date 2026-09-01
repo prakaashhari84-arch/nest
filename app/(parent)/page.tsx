@@ -10,66 +10,40 @@ interface ParentPageProps {
   onAttemptCrossRoleNav?: (path: string) => void;
 }
 
-export default function ParentPage({ user, onLogout, onAttemptCrossRoleNav }: ParentPageProps) {
+export default function ParentPage({ user, onLogout }: ParentPageProps) {
   return (
-    <div id="parent-area-container" className="space-y-6">
-      {/* Role badge header */}
-      <div className="bg-gradient-to-br from-indigo-50 via-white to-violet-50/40 border border-indigo-200/80 rounded-3xl p-5 sm:p-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-200 text-2xl flex items-center justify-center">
+    <div id="parent-area-container" className="min-h-[100dvh] w-full flex flex-col bg-stone-50 py-4 px-3 sm:px-6 space-y-6">
+      {/* Role header */}
+      <div className="bg-gradient-to-br from-indigo-50 via-white to-violet-50/40 border border-indigo-200/80 rounded-3xl p-5 sm:p-6 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-200 text-2xl flex items-center justify-center shrink-0">
               👩‍👧
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-900">
-                  Role: Parent
-                </span>
-                <span className="text-xs font-mono text-stone-400">
-                  /app/(parent)
+                  Parent Caregiver
                 </span>
               </div>
-              <p className="text-sm text-stone-600 mt-0.5">
-                Welcome, <strong>{user?.name || 'Parent'}</strong> — your family overview is below.
+              <p className="text-sm text-stone-700 mt-0.5">
+                Welcome, <strong>{user?.name || 'Parent'}</strong> &mdash; family activity and home practice overview.
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 self-end sm:self-center">
             {onLogout && (
               <button
                 type="button"
                 onClick={onLogout}
-                className="px-3.5 py-2 rounded-xl text-xs font-bold text-stone-600 border border-stone-200 bg-white hover:bg-stone-50 transition-all cursor-pointer"
+                className="px-4 py-2 rounded-xl text-xs font-bold text-stone-700 border border-stone-300 bg-white hover:bg-stone-50 transition-all cursor-pointer min-h-[40px]"
               >
                 Sign out
               </button>
             )}
           </div>
         </div>
-
-        {/* Cross-role test strip */}
-        {onAttemptCrossRoleNav && (
-          <div className="mt-4 pt-4 border-t border-indigo-100 flex flex-wrap items-center gap-2">
-            <span className="text-[11px] text-stone-400 font-semibold">Role guard test:</span>
-            <button
-              id="test-cross-child-btn"
-              type="button"
-              onClick={() => onAttemptCrossRoleNav('/child')}
-              className="px-2.5 py-1 rounded-lg border border-stone-200 text-[11px] font-semibold text-stone-500 hover:text-rose-600 hover:border-rose-300 transition-all cursor-pointer"
-            >
-              /child 🛑
-            </button>
-            <button
-              id="test-cross-clinician-btn"
-              type="button"
-              onClick={() => onAttemptCrossRoleNav('/clinician')}
-              className="px-2.5 py-1 rounded-lg border border-stone-200 text-[11px] font-semibold text-stone-500 hover:text-rose-600 hover:border-rose-300 transition-all cursor-pointer"
-            >
-              /clinician 🛑
-            </button>
-          </div>
-        )}
       </div>
 
       {/* Main dashboard */}
