@@ -79,12 +79,37 @@ export default async function handler(req: any, res: any) {
  * Intelligent contextual companion engine for dynamic, empathetic child conversation
  */
 function generateContextualReply(prompt: string, systemInstruction?: string): string {
-  // Extract child's latest message if in dialogue format
-  const lines = prompt.split('\n').filter((l) => l.trim().length > 0);
-  const lastLine = lines[lines.length - 1] || prompt;
-  const userMsg = lastLine.replace(/^[^:]+:\s*/, '').trim().toLowerCase();
+  // Extract child's latest message even when prompt ends with "Pip:"
+  const lines = prompt
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
 
-  const isYounger = Boolean(systemInstruction?.toLowerCase().includes('six_to_ten') || systemInstruction?.toLowerCase().includes('mature elder figure'));
+  let userMsg = '';
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (line.match(/^(pip|companion|bot|assistant|nestling):\s*$/i)) {
+      continue;
+    }
+    const clean = line.replace(/^[^:]+:\s*/, '').trim();
+    if (clean) {
+      userMsg = clean.toLowerCase();
+      break;
+    }
+  }
+  if (!userMsg) {
+    userMsg = prompt.toLowerCase();
+  }
+
+  const isYounger = Boolean(
+    systemInstruction?.toLowerCase().includes('six_to_ten') ||
+    systemInstruction?.toLowerCase().includes('mature elder figure') ||
+    systemInstruction?.toLowerCase().includes('age 6') ||
+    systemInstruction?.toLowerCase().includes('age 7') ||
+    systemInstruction?.toLowerCase().includes('age 8') ||
+    systemInstruction?.toLowerCase().includes('age 9') ||
+    systemInstruction?.toLowerCase().includes('age 10')
+  );
 
   // Medical / Diagnostic boundaries
   if (

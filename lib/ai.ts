@@ -172,14 +172,36 @@ Rules:
  * Safety-aligned fallback response simulator that strictly follows persona and safety boundaries
  */
 function simulateCompanionResponse(userPrompt: string, systemInstruction?: string): string {
-  // Extract child's latest message if in dialogue format (e.g. "Child: I am happy\nPip:")
-  const lines = userPrompt.split('\n').filter((l) => l.trim().length > 0);
-  const lastLine = lines[lines.length - 1] || userPrompt;
-  const userMsg = lastLine.replace(/^[^:]+:\s*/, '').trim().toLowerCase();
+  // Extract child's latest message even when prompt ends with "Pip:"
+  const lines = userPrompt
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+
+  let userMsg = '';
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    if (line.match(/^(pip|companion|bot|assistant|nestling):\s*$/i)) {
+      continue;
+    }
+    const clean = line.replace(/^[^:]+:\s*/, '').trim();
+    if (clean) {
+      userMsg = clean.toLowerCase();
+      break;
+    }
+  }
+  if (!userMsg) {
+    userMsg = userPrompt.toLowerCase();
+  }
 
   const isYounger = Boolean(
     systemInstruction?.toLowerCase().includes('six_to_ten') ||
-    systemInstruction?.toLowerCase().includes('mature elder figure')
+    systemInstruction?.toLowerCase().includes('mature elder figure') ||
+    systemInstruction?.toLowerCase().includes('age 6') ||
+    systemInstruction?.toLowerCase().includes('age 7') ||
+    systemInstruction?.toLowerCase().includes('age 8') ||
+    systemInstruction?.toLowerCase().includes('age 9') ||
+    systemInstruction?.toLowerCase().includes('age 10')
   );
 
   // Medical / Clinical Non-Diagnostic Mandates
